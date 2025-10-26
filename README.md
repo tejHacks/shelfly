@@ -94,7 +94,8 @@ Please ensure your code adheres to the project's coding style and conventions.
 
 * **LinkedIn**: [https://www.linkedin.com/in/olateju-olamide-22314a292/]
 * **Twitter**: [https://x.com/OlatejuOlamid10]
-* **Portfolio**: [tejuthedev.vercel.app]
+* **Portfolio**: [https://tejuthedev.vercel.app]
+* **Apk available for Download at**::[https://drive.google.com/file/d/18oOavOubDuRlos0aOMKNZKUuplaHZeXn/view]
 
 ---
 [![TypeScript](https://img.shields.io/badge/Language-TypeScript-blue)](https://www.typescriptlang.org/)
