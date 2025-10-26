@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "store-app",
+    "name": "Shelfly",
     "slug": "store-app",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -8,10 +8,9 @@
     "scheme": "storeapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
-    "ios": {
-      "supportsTablet": true
-    },
     "android": {
+      "package": "com.zxenon.shelfly",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -19,7 +18,13 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "minSdkVersion": 26,
+      "compileSdkVersion": 34,
+      "targetSdkVersion": 34
+    },
+    "ios": {
+      "supportsTablet": true
     },
     "web": {
       "output": "static",
@@ -38,11 +43,18 @@
             "backgroundColor": "#000000"
           }
         }
-      ]
+      ],
+      "expo-sqlite"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "18fda5d2-6296-46cb-a5a6-d5d91d1a2495"
+      }
     }
   }
 }
