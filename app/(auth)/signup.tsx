@@ -48,7 +48,7 @@ export default function Signup() {
 
       await createUser({ name, email, password });
       Alert.alert("Signup Successful", `Welcome to Shelfly, ${name}!`);
-      router.replace("/(auth)/login"); // ✅ fixed TS error
+      router.replace("/(auth)/login"); // fixed TS error
     } catch (error: any) {
       console.error("Signup error:", error);
       Alert.alert("Error", error.message || "Something went wrong while signing up.");
