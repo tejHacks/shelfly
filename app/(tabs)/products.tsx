@@ -25,7 +25,7 @@ export default function Products() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // 🔹 Load user and products
+  // Load user and products
   const fetchProducts = useCallback(async () => {
     try {
       setLoading(true);
@@ -47,14 +47,14 @@ export default function Products() {
     }
   }, [router]);
 
-  // 🔹 Reload whenever screen comes back into focus
+  //  Reload whenever screen comes back into focus
   useFocusEffect(
     useCallback(() => {
       fetchProducts();
     }, [fetchProducts])
   );
 
-  // 🔹 Delete a product
+  // Delete a product
   const handleDelete = async (id: number) => {
     Alert.alert(
       "Confirm Delete",
@@ -141,7 +141,7 @@ export default function Products() {
                 </Text>
               </View>
 
-              {/* 🔹 Edit Button */}
+              {/* Edit Button */}
               <TouchableOpacity
                 onPress={() =>
                   router.push({
@@ -154,7 +154,7 @@ export default function Products() {
                 <Text className="text-green-700 font-semibold text-sm">Edit</Text>
               </TouchableOpacity>
 
-              {/* 🔹 Delete Button */}
+              {/*Delete Button */}
               <TouchableOpacity
                 onPress={() => handleDelete(item.id!)}
                 className="bg-red-200 px-3 py-2 rounded-xl"

@@ -57,8 +57,7 @@ export async function initDB() {
       created_at DATETIME DEFAULT (datetime('now'))
     );
   `);
-
-  // === SAFELY ADD 'phone' COLUMN IF MISSING ===
+// add th phone colun to it in case 
   try {
     await db.execAsync(`ALTER TABLE users ADD COLUMN phone TEXT;`);
     console.log("[DB] Added 'phone' column");
@@ -84,7 +83,7 @@ export async function initDB() {
     );
   `);
 
-  // === RESET TOKENS TABLE ===
+  // === RESET TOKENS TABLE === send tokens to reset the user password sha (its not a real one though, but it just works sha...)
   await db.execAsync(`
     CREATE TABLE IF NOT EXISTS reset_tokens (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -159,6 +158,8 @@ export async function createUser(user: User & { phone?: string }): Promise<numbe
   }
 }
 
+
+// get the user buy their email
 export async function getUserByEmail(email: string): Promise<User | null> {
   const db = await initDB();
   const cleanEmail = email.trim().toLowerCase();
@@ -169,6 +170,8 @@ export async function getUserByEmail(email: string): Promise<User | null> {
   );
 }
 
+
+// get the user by validating their email and password
 export async function validateUser(email: string, password: string): Promise<User | null> {
   const user = await getUserByEmail(email);
   if (!user) return null;
@@ -204,6 +207,31 @@ export async function updateUser(user: Partial<User> & { email: string }): Promi
   if (result.changes === 0) throw new Error("User not found");
 }
 
+
+/* ------------------------------
+   DELETE USER (with cascade)
+--------------------------------*/
+
+export async function deleteUser(email: string): Promise<void> {
+  const db = await initDB();
+  const cleanEmail = email.trim().toLowerCase();
+
+  // First, verify user exists
+  const user = await getUserByEmail(cleanEmail);
+  if (!user) {
+    throw new Error("User not found");
+  }
+
+  // Delete user → products are auto-deleted via FOREIGN KEY ... ON DELETE CASCADE
+  const result = await db.runAsync(`DELETE FROM users WHERE email = ?;`, [cleanEmail]);
+
+  if (result.changes === 0) {
+    throw new Error("Failed to delete user");
+  }
+
+  console.log(`[DB] User deleted: ${cleanEmail}`);
+}
+
 /* ------------------------------
    PASSWORD RESET
 --------------------------------*/
@@ -226,6 +254,7 @@ export async function sendResetToken(email: string): Promise<string> {
 
   return token;
 }
+
 
 export async function verifyResetToken(email: string, token: string): Promise<User | null> {
   const db = await initDB();
@@ -330,3 +359,8 @@ export async function getProductById(id: number): Promise<Product | null> {
   const db = await initDB();
   return await db.getFirstAsync<Product>(`SELECT * FROM products WHERE id = ? LIMIT 1;`, [id]);
 }
+
+
+
+// i didnt have a backend so i decided not to use a process to send a token to the users email...
+//

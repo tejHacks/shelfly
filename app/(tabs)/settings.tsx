@@ -14,6 +14,7 @@ import { useRouter } from "expo-router";
 import { deleteUser, updateUser, User } from "../../src/db/database";
 
 export default function Settings() {
+  // User state
   const [user, setUser] = useState<User | null>(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -21,6 +22,7 @@ export default function Settings() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
+  // Load user from AsyncStorage on mount
   useEffect(() => {
     (async () => {
       const storedUser = await AsyncStorage.getItem("loggedInUser");
@@ -33,61 +35,73 @@ export default function Settings() {
     })();
   }, []);
 
+  // Update name and persist to DB + AsyncStorage
   const handleUpdateInfo = async () => {
     if (!user) return Alert.alert("Error", "No user found");
+
+    setLoading(true);
     try {
       await updateUser({ email: user.email, name });
       const updatedUser = { ...user, name };
       await AsyncStorage.setItem("loggedInUser", JSON.stringify(updatedUser));
       setUser(updatedUser);
       Alert.alert("Success", "User info updated successfully");
-    } catch (err) {
-      console.error(err);
-      Alert.alert("Error", "Failed to update user info");
+    } catch (err: any) {
+      console.error("Update info failed:", err);
+      Alert.alert("Error", err.message || "Failed to update user info");
+    } finally {
+      setLoading(false);
     }
   };
 
+  // Change password and clear input
   const handleChangePassword = async () => {
     if (!user) return Alert.alert("Error", "No user found");
     if (!password.trim()) return Alert.alert("Error", "Password cannot be empty");
 
+    setLoading(true);
     try {
       await updateUser({ email: user.email, password });
       Alert.alert("Success", "Password changed successfully");
-      setPassword("");
-    } catch (err) {
-      console.error(err);
-      Alert.alert("Error", "Failed to change password");
+      setPassword(""); // Clear password field
+    } catch (err: any) {
+      console.error("Password change failed:", err);
+      Alert.alert("Error", err.message || "Failed to change password");
+    } finally {
+      setLoading(false);
     }
   };
 
+  // Logout and redirect
   const handleLogout = async () => {
     await AsyncStorage.removeItem("loggedInUser");
     router.replace("/(auth)/login");
   };
 
+  // Delete account with confirmation
   const handleDeleteAccount = async () => {
     if (!user) return Alert.alert("Error", "No user found");
 
     Alert.alert(
-      "Confirm Delete",
-      "This will permanently delete your account and all your products. Are you sure?",
+      "Delete Account",
+      "This action is PERMANENT. All your products will be deleted.",
       [
         { text: "Cancel", style: "cancel" },
         {
-          text: "Delete",
+          text: "DELETE",
           style: "destructive",
           onPress: async () => {
+            setLoading(true);
             try {
-              setLoading(true);
               await deleteUser(user.email);
               await AsyncStorage.removeItem("loggedInUser");
-              setLoading(false);
+              Alert.alert("Deleted", "Your account has been removed.");
               router.replace("/(auth)/login");
-            } catch (err) {
-              console.error(err);
+            } catch (err: any) {
+              console.error("Account deletion failed:", err);
+              Alert.alert("Error", err.message || "Failed to delete account");
+            } finally {
               setLoading(false);
-              Alert.alert("Error", "Failed to delete account");
             }
           },
         },
@@ -102,6 +116,7 @@ export default function Settings() {
           Settings
         </Text>
 
+        {/* Global loading overlay */}
         {loading ? (
           <View className="flex-1 items-center justify-center mt-20">
             <ActivityIndicator size="large" color="#047857" />
@@ -109,6 +124,7 @@ export default function Settings() {
           </View>
         ) : (
           <>
+            {/* Profile Info Section */}
             <Text className="text-lg font-semibold text-gray-800 mb-2">
               Profile Info
             </Text>
@@ -118,6 +134,7 @@ export default function Settings() {
                 value={name}
                 onChangeText={setName}
                 className="border border-gray-300 rounded-xl p-3 mb-3"
+                editable={!loading}
               />
               <TextInput
                 placeholder="Email"
@@ -126,15 +143,20 @@ export default function Settings() {
                 className="border border-gray-300 rounded-xl p-3 bg-gray-100"
               />
             </View>
+
             <TouchableOpacity
               onPress={handleUpdateInfo}
-              className="bg-green-700 py-4 rounded-2xl mb-8"
+              disabled={loading}
+              className={`py-4 rounded-2xl mb-8 ${
+                loading ? "bg-green-400" : "bg-green-700"
+              }`}
             >
               <Text className="text-white text-center font-bold text-lg">
-                Update Info
+                {loading ? "Updating..." : "Update Info"}
               </Text>
             </TouchableOpacity>
 
+            {/* Change Password Section */}
             <Text className="text-lg font-semibold text-gray-800 mb-2">
               Change Password
             </Text>
@@ -145,31 +167,43 @@ export default function Settings() {
                 onChangeText={setPassword}
                 secureTextEntry
                 className="border border-gray-300 rounded-xl p-3"
+                editable={!loading}
               />
             </View>
+
             <TouchableOpacity
               onPress={handleChangePassword}
-              className="bg-yellow-500 py-4 rounded-2xl mb-8"
+              disabled={loading}
+              className={`py-4 rounded-2xl mb-8 ${
+                loading ? "bg-yellow-300" : "bg-yellow-500"
+              }`}
             >
               <Text className="text-white text-center font-bold text-lg">
-                Change Password
+                {loading ? "Changing..." : "Change Password"}
               </Text>
             </TouchableOpacity>
 
+            {/* Logout Button */}
             <TouchableOpacity
               onPress={handleLogout}
+              disabled={loading}
               className="bg-red-600 py-4 rounded-2xl mb-10"
             >
-              <Text className="text-white text-center font-bold text-lg">Logout</Text>
+              <Text className="text-white text-center font-bold text-lg">
+                Logout
+              </Text>
             </TouchableOpacity>
 
-            {/* Delete Account */}
+            {/* Delete Account Button */}
             <TouchableOpacity
               onPress={handleDeleteAccount}
-              className="bg-gray-800 py-4 rounded-2xl mb-12"
+              disabled={loading}
+              className={`py-4 rounded-2xl mb-12 ${
+                loading ? "bg-gray-500" : "bg-gray-800"
+              }`}
             >
               <Text className="text-white text-center font-bold text-lg">
-                Delete Account
+                {loading ? "Deleting..." : "Delete Account"}
               </Text>
             </TouchableOpacity>
           </>
