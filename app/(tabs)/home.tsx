@@ -12,7 +12,7 @@ export default function Home() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // 🔹 Fetch user + products
+  // Fetch user + products
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
@@ -34,7 +34,7 @@ export default function Home() {
     }
   }, [router]);
 
-  // 🔹 Run when screen is focused (every time you return to this tab)
+
   useFocusEffect(
     useCallback(() => {
       fetchData();

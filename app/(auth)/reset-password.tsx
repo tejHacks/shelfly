@@ -1,4 +1,3 @@
-// src/app/(auth)/reset-password.tsx
 import { useState } from "react";
 import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
