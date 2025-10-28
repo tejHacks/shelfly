@@ -1,9 +1,10 @@
+// src/app/(auth)/login.tsx
 import { useState, useEffect } from "react";
 import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { validateUser, initDB } from "../../src/db/database";
+import { initDB, validateUser } from "../../src/db/database";
 
 export default function Login() {
   const router = useRouter();
@@ -11,7 +12,6 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Initialize DB when login screen mounts
   useEffect(() => {
     initDB().catch((err) => console.error("DB init failed:", err));
   }, []);
@@ -31,16 +31,14 @@ export default function Login() {
         return;
       }
 
-      // Save the logged-in user to AsyncStorage
+      // Save user to AsyncStorage
       await AsyncStorage.setItem("loggedInUser", JSON.stringify(user));
 
       Alert.alert("Login Successful", `Welcome back, ${user.name}!`);
-
-      // Navigate to home screen
       router.replace("/(tabs)/home");
     } catch (error: any) {
       console.error("Login error:", error);
-      Alert.alert("Error", error.message || "Something went wrong while logging in.");
+      Alert.alert("Error", error.message || "Something went wrong.");
     } finally {
       setLoading(false);
     }
@@ -69,16 +67,15 @@ export default function Login() {
             onChangeText={setEmail}
             keyboardType="email-address"
             autoCapitalize="none"
-            className="border border-gray-300 rounded-2xl px-4 py-3 mb-2 text-gray-800"
+            className="border border-gray-300 rounded-2xl px-4 py-3 mb-4 text-gray-800"
           />
-
           <TextInput
             placeholder="Password"
             placeholderTextColor="#9CA3AF"
             value={password}
             onChangeText={setPassword}
             secureTextEntry
-            className="border border-gray-300 rounded-2xl px-4 py-3 mb-2 text-gray-800"
+            className="border border-gray-300 rounded-2xl px-4 py-3 mb-4 text-gray-800"
           />
         </View>
 
@@ -96,9 +93,16 @@ export default function Login() {
         </TouchableOpacity>
 
         <View className="mt-6 flex-row justify-center">
-          <Text className="text-gray-600">Don’t have an account? </Text>
+          <Text className="text-gray-600">Don&apos;t have an account? </Text>
           <TouchableOpacity onPress={() => router.replace("/(auth)/signup")}>
             <Text className="text-green-700 font-semibold">Sign up</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View className="mt-4 flex-row justify-center">
+          <Text className="text-gray-600">Forgot password? </Text>
+          <TouchableOpacity onPress={() => router.push("/(auth)/reset-password")}>
+            <Text className="text-red-700 font-semibold">Reset here</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>

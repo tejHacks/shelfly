@@ -2,15 +2,17 @@ import * as SQLite from "expo-sqlite";
 import * as Crypto from "expo-crypto";
 
 /**
- * Database singleton (initialized once)
+ * Database singleton
  */
 let db: SQLite.SQLiteDatabase | null = null;
 
+// User with phone
 export type User = {
   id?: number;
   name: string;
   email: string;
-  password: string; // hashed password
+  password: string; // hashed
+  phone?: string;
   created_at?: string;
 };
 
@@ -34,20 +36,18 @@ export class ValidationError extends Error {
 export async function initDB() {
   console.log("[DB] initDB called");
   if (db) {
-    console.log("[DB] Reusing existing DB instance");
+    console.log("[DB] Reusing existing DB");
     return db;
   }
 
-  console.log("[DB] Opening database: shelfly.db");
   db = await SQLite.openDatabaseAsync("shelfly.db");
 
-  console.log("[DB] Setting PRAGMA journal_mode = WAL and foreign_keys = ON");
   await db.execAsync(`
     PRAGMA journal_mode = WAL;
     PRAGMA foreign_keys = ON;
   `);
 
-  console.log("[DB] Creating users table if not exists");
+  // === USERS TABLE ===
   await db.execAsync(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -58,7 +58,19 @@ export async function initDB() {
     );
   `);
 
-  console.log("[DB] Creating products table if not exists");
+  // === SAFELY ADD 'phone' COLUMN IF MISSING ===
+  try {
+    await db.execAsync(`ALTER TABLE users ADD COLUMN phone TEXT;`);
+    console.log("[DB] Added 'phone' column");
+  } catch (err: any) {
+    if (!String(err.message).includes("duplicate column name")) {
+      console.error("[DB] Failed to add phone column:", err);
+    } else {
+      console.log("[DB] 'phone' column already exists");
+    }
+  }
+
+  // === PRODUCTS TABLE ===
   await db.execAsync(`
     CREATE TABLE IF NOT EXISTS products (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -72,149 +84,168 @@ export async function initDB() {
     );
   `);
 
+  // === RESET TOKENS TABLE ===
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS reset_tokens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT NOT NULL,
+      token TEXT NOT NULL,
+      expires_at DATETIME NOT NULL,
+      created_at DATETIME DEFAULT (datetime('now')),
+      FOREIGN KEY(email) REFERENCES users(email) ON DELETE CASCADE
+    );
+  `);
+
+  // Clean expired tokens
+  await db.runAsync(`DELETE FROM reset_tokens WHERE expires_at < datetime('now');`);
+
   const tables = await db.getAllAsync<{ name: string }>(
     `SELECT name FROM sqlite_master WHERE type='table';`
   );
-  console.log("[DB] Tables in database:", tables.map(t => t.name));
+  console.log("[DB] Tables:", tables.map(t => t.name));
 
-  console.log("[DB] SQLite DB initialized successfully");
   return db;
+}
+
+/* ------------------------------
+   PASSWORD HASHING
+--------------------------------*/
+
+async function hashPassword(password: string): Promise<string> {
+  return await Crypto.digestStringAsync(
+    Crypto.CryptoDigestAlgorithm.SHA256,
+    password
+  );
 }
 
 /* ------------------------------
    USER FUNCTIONS
 --------------------------------*/
 
-async function hashPassword(password: string): Promise<string> {
-  console.log("[DB] hashPassword called with password length:", password.length);
-  const hashed = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, password);
-  console.log("[DB] Password hashed successfully");
-  return hashed;
-}
-
-export async function createUser(user: User): Promise<number> {
-  console.log("[DB] createUser called with:", { name: user.name, email: user.email });
-
-  const database = await initDB();
+export async function createUser(user: User & { phone?: string }): Promise<number> {
+  const db = await initDB();
 
   if (!user.name?.trim()) throw new ValidationError("Name is required");
   if (!user.email?.trim()) throw new ValidationError("Email is required");
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(user.email.trim()))
     throw new ValidationError("Invalid email format");
-
   if (!user.password || user.password.length < 6)
     throw new ValidationError("Password must be at least 6 characters");
 
   const hashed = await hashPassword(user.password);
   const email = user.email.trim().toLowerCase();
+  const phone = user.phone?.trim() || null;
 
   try {
-    console.log("[DB] Inserting user into DB:", { name: user.name.trim(), email });
-    const result = await database.runAsync(
-      `INSERT INTO users (name, email, password) VALUES (?, ?, ?);`,
-      [user.name.trim(), email, hashed]
+    const result = await db.runAsync(
+      `INSERT INTO users (name, email, password, phone) VALUES (?, ?, ?, ?);`,
+      [user.name.trim(), email, hashed, phone]
     );
-    console.log("[DB] User created with ID:", result.lastInsertRowId);
     return result.lastInsertRowId ?? -1;
   } catch (err: any) {
-    if (String(err?.message).includes("UNIQUE")) {
-      console.log("[DB] Email already exists:", email);
-      throw new Error("A user with this email already exists");
+    const msg = String(err?.message || "");
+
+    if (msg.includes("UNIQUE")) {
+      throw new Error("This email is already registered.");
     }
-    console.error("[DB] Failed to create user:", err.message);
-    throw new Error("Failed to create user: " + err.message);
+    if (msg.includes("no such table")) {
+      throw new Error("Database not ready. Restart the app.");
+    }
+    if (msg.includes("no column")) {
+      throw new Error("DB outdated. Run: npx expo start --clear");
+    }
+
+    throw new Error(`Signup failed: ${msg}`);
   }
 }
 
 export async function getUserByEmail(email: string): Promise<User | null> {
-  console.log("[DB] getUserByEmail called with:", email);
-  const database = await initDB();
+  const db = await initDB();
   const cleanEmail = email.trim().toLowerCase();
 
-  const row = await database.getFirstAsync<User>(
+  return await db.getFirstAsync<User>(
     `SELECT * FROM users WHERE email = ? LIMIT 1;`,
     [cleanEmail]
   );
-
-  if (row) {
-    console.log("[DB] User found:", { id: row.id, email: row.email });
-  } else {
-    console.log("[DB] No user found for email:", cleanEmail);
-  }
-
-  return row ?? null;
 }
 
 export async function validateUser(email: string, password: string): Promise<User | null> {
-  console.log("[DB] validateUser called for:", email);
   const user = await getUserByEmail(email);
-  if (!user) {
-    console.log("[DB] validateUser: User not found");
-    return null;
-  }
+  if (!user) return null;
 
   const hashed = await hashPassword(password);
-  const isValid = user.password === hashed;
-  console.log("[DB] validateUser: Password match =", isValid);
-
-  return isValid ? user : null;
+  return user.password === hashed ? user : null;
 }
 
 export async function updateUser(user: Partial<User> & { email: string }): Promise<void> {
-  console.log("[DB] updateUser called for email:", user.email);
-  const database = await initDB();
-
+  const db = await initDB();
   const updates: string[] = [];
   const values: any[] = [];
 
   if (user.name) {
     updates.push("name = ?");
     values.push(user.name.trim());
-    console.log("[DB] Updating name to:", user.name.trim());
   }
-
   if (user.password) {
-    const hashed = await Crypto.digestStringAsync(
-      Crypto.CryptoDigestAlgorithm.SHA256,
-      user.password
-    );
+    const hashed = await hashPassword(user.password);
     updates.push("password = ?");
     values.push(hashed);
-    console.log("[DB] Updating password (hashed)");
   }
 
-  if (updates.length === 0) {
-    console.log("[DB] updateUser: No fields to update");
-    throw new Error("No fields to update");
-  }
+  if (updates.length === 0) throw new Error("No fields to update");
 
   values.push(user.email.trim().toLowerCase());
 
-  const result = await database.runAsync(
+  const result = await db.runAsync(
     `UPDATE users SET ${updates.join(", ")} WHERE email = ?;`,
     values
   );
 
-  if (result.changes === 0) {
-    console.log("[DB] updateUser: No changes made (user not found or unchanged)");
-    throw new Error("User not found or unchanged");
-  }
-
-  console.log("[DB] updateUser: User updated successfully");
+  if (result.changes === 0) throw new Error("User not found");
 }
 
-export async function deleteUser(email: string): Promise<void> {
-  console.log("[DB] deleteUser called for:", email);
-  const database = await initDB();
+/* ------------------------------
+   PASSWORD RESET
+--------------------------------*/
+
+export async function sendResetToken(email: string): Promise<string> {
+  const db = await initDB();
   const cleanEmail = email.trim().toLowerCase();
 
-  console.log("[DB] Deleting products for user:", cleanEmail);
-  await database.runAsync("DELETE FROM products WHERE ownerEmail = ?;", [cleanEmail]);
+  const user = await getUserByEmail(cleanEmail);
+  if (!user) throw new ValidationError("No account with this email");
 
-  console.log("[DB] Deleting user record:", cleanEmail);
-  await database.runAsync("DELETE FROM users WHERE email = ?;", [cleanEmail]);
+  const token = Math.floor(100000 + Math.random() * 900000).toString();
+  const expiresAt = new Date(Date.now() + 2 * 60 * 1000);
 
-  console.log("[DB] User and products deleted successfully");
+  await db.runAsync(`DELETE FROM reset_tokens WHERE email = ?;`, [cleanEmail]);
+  await db.runAsync(
+    `INSERT INTO reset_tokens (email, token, expires_at) VALUES (?, ?, ?);`,
+    [cleanEmail, token, expiresAt.toISOString()]
+  );
+
+  return token;
+}
+
+export async function verifyResetToken(email: string, token: string): Promise<User | null> {
+  const db = await initDB();
+  const cleanEmail = email.trim().toLowerCase();
+
+  const row = await db.getFirstAsync<{ token: string; expires_at: string }>(
+    `SELECT token, expires_at FROM reset_tokens WHERE email = ? AND token = ?;`,
+    [cleanEmail, token]
+  );
+
+  if (!row) return null;
+
+  const expired = new Date(row.expires_at) < new Date();
+  if (expired) {
+    await db.runAsync(`DELETE FROM reset_tokens WHERE email = ? AND token = ?;`, [cleanEmail, token]);
+    return null;
+  }
+
+  await db.runAsync(`DELETE FROM reset_tokens WHERE email = ?;`, [cleanEmail]);
+  return await getUserByEmail(cleanEmail);
 }
 
 /* ------------------------------
@@ -222,23 +253,20 @@ export async function deleteUser(email: string): Promise<void> {
 --------------------------------*/
 
 export async function insertProduct(product: Product): Promise<number> {
-  console.log("[DB] insertProduct called:", { name: product.name, ownerEmail: product.ownerEmail });
-
-  const database = await initDB();
+  const db = await initDB();
 
   if (!product.ownerEmail?.trim()) throw new ValidationError("Owner email required");
   if (!product.name?.trim()) throw new ValidationError("Product name required");
   if (!Number.isInteger(product.quantity) || product.quantity < 0)
-    throw new ValidationError("Quantity must be a non-negative integer");
+    throw new ValidationError("Invalid quantity");
   if (typeof product.price !== "number" || product.price < 0)
-    throw new ValidationError("Price must be a non-negative number");
+    throw new ValidationError("Invalid price");
 
   const owner = await getUserByEmail(product.ownerEmail);
   if (!owner) throw new ValidationError("Owner not found");
 
-  const result = await database.runAsync(
-    `INSERT INTO products (ownerEmail, name, quantity, price, imageUri)
-     VALUES (?, ?, ?, ?, ?);`,
+  const result = await db.runAsync(
+    `INSERT INTO products (ownerEmail, name, quantity, price, imageUri) VALUES (?, ?, ?, ?, ?);`,
     [
       product.ownerEmail.trim().toLowerCase(),
       product.name.trim(),
@@ -248,101 +276,57 @@ export async function insertProduct(product: Product): Promise<number> {
     ]
   );
 
-  console.log("[DB] Product inserted with ID:", result.lastInsertRowId);
   return result.lastInsertRowId ?? -1;
 }
 
 export async function getProductsByOwner(ownerEmail: string): Promise<Product[]> {
-  console.log("[DB] getProductsByOwner called for:", ownerEmail);
-  const database = await initDB();
-  const cleanEmail = ownerEmail.trim().toLowerCase();
-
-  const products = await database.getAllAsync<Product>(
+  const db = await initDB();
+  return await db.getAllAsync<Product>(
     `SELECT * FROM products WHERE ownerEmail = ? ORDER BY id DESC;`,
-    [cleanEmail]
+    [ownerEmail.trim().toLowerCase()]
   );
-
-  console.log(`[DB] Found ${products.length} product(s) for ${cleanEmail}`);
-  return products;
 }
 
 export async function updateProduct(product: Product): Promise<void> {
-  console.log("[DB] updateProduct called for product ID:", product.id);
-
-  const database = await initDB();
+  const db = await initDB();
 
   if (!product.id) throw new ValidationError("Product ID required");
   if (!product.name?.trim()) throw new ValidationError("Product name required");
 
-  const result = await database.runAsync(
-    `UPDATE products
-     SET name = ?, quantity = ?, price = ?, imageUri = ?
-     WHERE id = ?;`,
+  const result = await db.runAsync(
+    `UPDATE products SET name = ?, quantity = ?, price = ?, imageUri = ? WHERE id = ?;`,
     [product.name.trim(), product.quantity, product.price, product.imageUri ?? null, product.id]
   );
 
-  if (result.changes === 0) {
-    console.log("[DB] updateProduct: No changes (product not found or unchanged)");
-    throw new Error("Product not found or unchanged");
-  }
-
-  console.log("[DB] Product updated successfully (ID:", product.id, ")");
+  if (result.changes === 0) throw new Error("Product not found");
 }
 
 export async function deleteProductById(id: number): Promise<void> {
-  console.log("[DB] deleteProductById called for ID:", id);
-  const database = await initDB();
-
-  const result = await database.runAsync(`DELETE FROM products WHERE id = ?;`, [id]);
-
-  if (result.changes === 0) {
-    console.log("[DB] deleteProductById: Product not found");
-    throw new Error("Product not found");
-  }
-
-  console.log("[DB] Product deleted successfully (ID:", id, ")");
+  const db = await initDB();
+  const result = await db.runAsync(`DELETE FROM products WHERE id = ?;`, [id]);
+  if (result.changes === 0) throw new Error("Product not found");
 }
 
 /* ------------------------------
-   HELPER QUERIES
+   HELPERS
 --------------------------------*/
 
 export async function getUserCount(): Promise<number> {
-  console.log("[DB] getUserCount called");
-  const database = await initDB();
-  const row = await database.getFirstAsync<{ count: number }>(
-    `SELECT COUNT(*) AS count FROM users;`
-  );
-  const count = Number(row?.count ?? 0);
-  console.log("[DB] Total users:", count);
-  return count;
+  const db = await initDB();
+  const row = await db.getFirstAsync<{ count: number }>(`SELECT COUNT(*) AS count FROM users;`);
+  return Number(row?.count ?? 0);
 }
 
 export async function getProductCount(ownerEmail: string): Promise<number> {
-  console.log("[DB] getProductCount called for:", ownerEmail);
-  const database = await initDB();
-  const row = await database.getFirstAsync<{ count: number }>(
+  const db = await initDB();
+  const row = await db.getFirstAsync<{ count: number }>(
     `SELECT COUNT(*) AS count FROM products WHERE ownerEmail = ?;`,
     [ownerEmail.trim().toLowerCase()]
   );
-  const count = Number(row?.count ?? 0);
-  console.log(`[DB] Product count for ${ownerEmail}:`, count);
-  return count;
+  return Number(row?.count ?? 0);
 }
 
 export async function getProductById(id: number): Promise<Product | null> {
-  console.log("[DB] getProductById called for ID:", id);
-  const database = await initDB();
-  const row = await database.getFirstAsync<Product>(
-    `SELECT * FROM products WHERE id = ? LIMIT 1;`,
-    [id]
-  );
-
-  if (row) {
-    console.log("[DB] Product found:", row);
-  } else {
-    console.log("[DB] No product found for ID:", id);
-  }
-
-  return row ?? null;
+  const db = await initDB();
+  return await db.getFirstAsync<Product>(`SELECT * FROM products WHERE id = ? LIMIT 1;`, [id]);
 }

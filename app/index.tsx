@@ -38,7 +38,7 @@ export default function Index() {
         showsVerticalScrollIndicator={false}
       >
         {/* Shelfly Title */}
-        <View className="flex-row items-end space-x-2">
+        <View className="flex-row items-end space-x-2 mb-3 pb-4">
           <Animated.View style={{ transform: [{ translateX: leftText }] }}>
             <Text className="text-green-700 text-6xl font-extrabold">Shelf</Text>
           </Animated.View>
